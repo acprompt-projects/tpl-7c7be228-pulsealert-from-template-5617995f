@@ -1,0 +1,567 @@
+openapi: 3.1.0
+info:
+  title: PulseAlert API
+  version: 1.0.0
+  description: Webhook-based alerting microservice for routing health-check notifications.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+paths:
+  /events:
+    post:
+      summary: Ingest a health-check event
+      operationId: createEvent
+      tags: [Events]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreate'
+      responses:
+        '201':
+          description: Event accepted and queued for rule matching
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: List recent events
+      operationId: listEvents
+      tags: [Events]
+      parameters:
+        - name: service
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [info, warning, critical]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Paginated event list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+
+  /events/{eventId}:
+    get:
+      summary: Get event by ID
+      operationId: getEvent
+      tags: [Events]
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Event details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /rules:
+    post:
+      summary: Create a routing rule
+      operationId: createRule
+      tags: [Rules]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleCreate'
+      responses:
+        '201':
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rule'
+    get:
+      summary: List all rules
+      operationId: listRules
+      tags: [Rules]
+      responses:
+        '200':
+          description: Rule list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rule'
+
+  /rules/{ruleId}:
+    put:
+      summary: Update a rule
+      operationId: updateRule
+      tags: [Rules]
+      parameters:
+        - name: ruleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleCreate'
+      responses:
+        '200':
+          description: Rule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rule'
+    delete:
+      summary: Delete a rule
+      operationId: deleteRule
+      tags: [Rules]
+      parameters:
+        - name: ruleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+
+  /channels:
+    post:
+      summary: Register a notification channel
+      operationId: createChannel
+      tags: [Channels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelCreate'
+      responses:
+        '201':
+          description: Channel registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+    get:
+      summary: List channels
+      operationId: listChannels
+      tags: [Channels]
+      responses:
+        '200':
+          description: Channel list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Channel'
+
+  /channels/{channelId}:
+    put:
+      summary: Update channel config
+      operationId: updateChannel
+      tags: [Channels]
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelCreate'
+      responses:
+        '200':
+          description: Channel updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+    delete:
+      summary: Remove a channel
+      operationId: deleteChannel
+      tags: [Channels]
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Removed
+
+  /ack/{eventId}:
+    post:
+      summary: Acknowledge an event, halting escalation
+      operationId: acknowledgeEvent
+      tags: [Acknowledgements]
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                acknowledged_by:
+                  type: string
+                  description: Name or ID of the acknowledger
+              required:
+                - acknowledged_by
+      responses:
+        '200':
+          description: Event acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications:
+    get:
+      summary: List notification delivery history
+      operationId: listNotifications
+      tags: [Notifications]
+      parameters:
+        - name: event_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, sent, failed, acked]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Notification history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+
+components:
+  schemas:
+    EventCreate:
+      type: object
+      required: [source, service, severity, status, message]
+      properties:
+        source:
+          type: string
+          description: Origin monitor name (e.g. pingdom, uptimerobot)
+          maxLength: 64
+        service:
+          type: string
+          description: Affected service identifier
+          maxLength: 128
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        status:
+          type: string
+          enum: [healthy, degraded, down, recovered]
+        message:
+          type: string
+          maxLength: 512
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Arbitrary key-value context
+        timestamp:
+          type: string
+          format: date-time
+          description: Event time; defaults to server time if omitted
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        source:
+          type: string
+        service:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        status:
+          type: string
+          enum: [healthy, degraded, down, recovered]
+        message:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        timestamp:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        acknowledged:
+          type: boolean
+
+    RuleCreate:
+      type: object
+      required: [name, conditions, channels]
+      properties:
+        name:
+          type: string
+          maxLength: 64
+        conditions:
+          type: object
+          description: JSON boolean expression matching event fields
+          properties:
+            severity:
+              type: array
+              items:
+                type: string
+                enum: [info, warning, critical]
+              description: Match these severity levels
+            service:
+              type: array
+              items:
+                type: string
+              description: Match these services
+            status:
+              type: array
+              items:
+                type: string
+                enum: [healthy, degraded, down, recovered]
+              description: Match these statuses
+            source:
+              type: array
+              items:
+                type: string
+              description: Match these sources
+          minProperties: 1
+        channels:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Channel IDs to notify when rule matches
+        suppression_window:
+          type: integer
+          description: Seconds to suppress repeat alerts for same service/severity
+          default: 300
+        escalation_delay:
+          type: integer
+          description: Minutes before escalating to next tier
+          default: 15
+        escalation_tiers:
+          type: array
+          items:
+            type: object
+            required: [channel_id, target]
+            properties:
+              channel_id:
+                type: string
+                format: uuid
+              target:
+                type: string
+                description: e.g. Slack channel name, email address
+          description: Ordered escalation tiers (tier-0 is initial target)
+
+    Rule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        conditions:
+          type: object
+        channels:
+          type: array
+          items:
+            type: string
+            format: uuid
+        suppression_window:
+          type: integer
+        escalation_delay:
+          type: integer
+        escalation_tiers:
+          type: array
+          items:
+            type: object
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ChannelCreate:
+      type: object
+      required: [type, config]
+      properties:
+        type:
+          type: string
+          enum: [slack, discord, email, webhook]
+        config:
+          type: object
+          description: Channel-specific configuration
+          properties:
+            webhook_url:
+              type: string
+              format: uri
+              description: Required for slack/discord/webhook types
+            email_from:
+              type: string
+              format: email
+              description: Sender address for email type
+            email_to:
+              type: array
+              items:
+                type: string
+                format: email
+              description: Recipients for email type
+            smtp_host:
+              type: string
+              description: SMTP server host
+            smtp_port:
+              type: integer
+              default: 587
+            smtp_user:
+              type: string
+            smtp_pass:
+              type: string
+              description: Stored encrypted; write-only
+            custom_headers:
+              type: object
+              additionalProperties:
+                type: string
+              description: Extra headers for webhook type
+        enabled:
+          type: boolean
+          default: true
+
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [slack, discord, email, webhook]
+        config:
+          type: object
+          description: Channel config (secrets omitted in read responses)
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        rule_id:
+          type: string
+          format: uuid
+        channel_id:
+          type: string
+          format: uuid
+        target:
+          type: string
+        tier:
+          type: integer
+          description: Escalation tier level (0 = initial)
+        status:
+          type: string
+          enum: [pending, sent, failed, acked]
+        error:
+          type: string
+          description: Error message if status=failed
+        sent_at:
+          type: string
+          format: date-time
+        ack_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
